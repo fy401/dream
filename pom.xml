@@ -12,6 +12,7 @@
     <modules>
         <module>worker</module>
         <module>broker</module>
+        <module>protocol</module>
     </modules>
 
     <properties>
@@ -27,7 +28,14 @@
                 <artifactId>spring-boot-starter</artifactId>
                 <version>2.3.2.RELEASE</version>
             </dependency>
+
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>1.7.36</version>
+            </dependency>
         </dependencies>
+
     </dependencyManagement>
 
     <dependencies>
@@ -39,10 +47,6 @@
             <scope>test</scope>
         </dependency>
 
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>1.7.36</version>
-        </dependency>
+
     </dependencies>
 </project>

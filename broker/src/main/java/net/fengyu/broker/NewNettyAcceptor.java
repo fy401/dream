@@ -25,10 +25,10 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.concurrent.Future;
+import net.fengyu.broker.codec.MarsMessageDecoder;
+import net.fengyu.broker.codec.MarsMessageEncoder;
 import net.fengyu.broker.config.IConfig;
-import net.fengyu.broker.metrics.BytesMetricsCollector;
-import net.fengyu.broker.metrics.BytesMetricsHandler;
-import net.fengyu.broker.metrics.MessageMetricsCollector;
+import net.fengyu.broker.metrics.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,8 +42,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import static io.netty.channel.ChannelFutureListener.FIRE_EXCEPTION_ON_FAILURE;
-import static net.fengyu.broker.BrokerConstants.BUGSNAG_ENABLE_PROPERTY_NAME;
-import static net.fengyu.broker.BrokerConstants.METRICS_ENABLE_PROPERTY_NAME;
+import static net.fengyu.broker.BrokerConstants.*;
 
 
 /**
@@ -129,7 +128,7 @@ class NewNettyAcceptor {
 
     private Class<? extends ServerSocketChannel> channelClass;
 
-    public void initialize(NewNettyMQTTHandler mqttHandler, IConfig props, ISslContextCreator sslCtxCreator, BrokerConfiguration brokerConfiguration) {
+    public void initialize(NettyDreamHandler marsHandler, IConfig props, ISslContextCreator sslCtxCreator, BrokerConfiguration brokerConfiguration) {
         LOG.debug("Initializing Netty acceptor");
 
         nettySoBacklog = props.intProp(BrokerConstants.NETTY_SO_BACKLOG_PROPERTY_NAME, 128);
@@ -173,17 +172,17 @@ class NewNettyAcceptor {
         this.metrics = Optional.empty();
         this.errorsCather = Optional.empty();
 
-        initializePlainTCPTransport(mqttHandler, props, brokerConfiguration);
-        initializeWebSocketTransport(mqttHandler, props, brokerConfiguration);
-        if (securityPortsConfigured(props)) {
-            SslContext sslContext = sslCtxCreator.initSSLContext();
-            if (sslContext == null) {
-                LOG.error("Can't initialize SSLHandler layer! Exiting, check your configuration of jks");
-                return;
-            }
-            initializeSSLTCPTransport(mqttHandler, props, sslContext, brokerConfiguration);
-            initializeWSSTransport(mqttHandler, props, sslContext, brokerConfiguration);
-        }
+        initializePlainTCPTransport(marsHandler, props, brokerConfiguration);
+        //initializeWebSocketTransport(mqttHandler, props, brokerConfiguration);
+//        if (securityPortsConfigured(props)) {
+//            SslContext sslContext = sslCtxCreator.initSSLContext();
+//            if (sslContext == null) {
+//                LOG.error("Can't initialize SSLHandler layer! Exiting, check your configuration of jks");
+//                return;
+//            }
+//            initializeSSLTCPTransport(mqttHandler, props, sslContext, brokerConfiguration);
+//            initializeWSSTransport(mqttHandler, props, sslContext, brokerConfiguration);
+//        }
     }
 
     private boolean securityPortsConfigured(IConfig props) {
@@ -234,9 +233,9 @@ class NewNettyAcceptor {
         return ports.computeIfAbsent(SSL_MQTT_PROTO, i -> 0);
     }
 
-    private void initializePlainTCPTransport(NewNettyMQTTHandler handler, IConfig props, BrokerConfiguration brokerConfiguration) {
+    private void initializePlainTCPTransport(NettyDreamHandler handler, IConfig props, BrokerConfiguration brokerConfiguration) {
         LOG.debug("Configuring TCP MQTT transport");
-        final MoquetteIdleTimeoutHandler timeoutHandler = new MoquetteIdleTimeoutHandler();
+        final DreamIdleTimeoutHandler timeoutHandler = new DreamIdleTimeoutHandler();
         String host = props.getProperty(BrokerConstants.HOST_PROPERTY_NAME);
         String tcpPortProp = props.getProperty(PORT_PROPERTY_NAME, DISABLED_PORT_BIND);
         if (DISABLED_PORT_BIND.equals(tcpPortProp)) {
@@ -251,19 +250,22 @@ class NewNettyAcceptor {
             @Override
             void init(SocketChannel channel) {
                 ChannelPipeline pipeline = channel.pipeline();
-                configureMQTTPipeline(pipeline, timeoutHandler, handler, writeFlushMillis);
+                configureDreamPipeline(pipeline, timeoutHandler, handler, writeFlushMillis);
             }
         });
     }
 
-    private void configureMarsPipeline(ChannelPipeline pipeline, DreamIdleTimeoutHandler timeoutHandler,
-                                       NewNettyMQTTHandler handler, int writeFlushMillis) {
+    private void configureDreamPipeline(ChannelPipeline pipeline, DreamIdleTimeoutHandler timeoutHandler,
+                                        NettyDreamHandler handler, int writeFlushMillis) {
         pipeline.addFirst("idleStateHandler", new IdleStateHandler(nettyChannelTimeoutSeconds, 0, 0));
         pipeline.addAfter("idleStateHandler", "idleEventHandler", timeoutHandler);
         if (errorsCather.isPresent()) {
             pipeline.addLast("bugsnagCatcher", errorsCather.get());
         }
         pipeline.addFirst("bytemetrics", new BytesMetricsHandler(bytesMetricsCollector));
+        if (writeFlushMillis > IMMEDIATE_BUFFER_FLUSH) {
+            pipeline.addLast("autoflush", new AutoFlushHandler(writeFlushMillis, TimeUnit.MILLISECONDS));
+        }
         /*
          *		lengthFieldOffset   = 16 (= the length of Header 1)
          *		lengthFieldLength   = 4
@@ -279,130 +281,135 @@ class NewNettyAcceptor {
          *		从第5个字节到最后表示帧数据，解码时，由于initialBytesToStrip=0，表示跳过0个字节，
          */
         pipeline.addLast("framer", new LengthFieldBasedFrameDecoder(this.maxBytesInMessage,16,4,0,0));
-
-
-
-    }
-
-    private void configureMQTTPipeline(ChannelPipeline pipeline, MoquetteIdleTimeoutHandler timeoutHandler,
-                                       NewNettyMQTTHandler handler, int writeFlushMillis) {
-        pipeline.addFirst("idleStateHandler", new IdleStateHandler(nettyChannelTimeoutSeconds, 0, 0));
-        pipeline.addAfter("idleStateHandler", "idleEventHandler", timeoutHandler);
-        // pipeline.addLast("logger", new LoggingHandler("Netty", LogLevel.ERROR));
-        if (errorsCather.isPresent()) {
-            pipeline.addLast("bugsnagCatcher", errorsCather.get());
-        }
-        pipeline.addFirst("bytemetrics", new BytesMetricsHandler(bytesMetricsCollector));
-        if (writeFlushMillis > IMMEDIATE_BUFFER_FLUSH) {
-            pipeline.addLast("autoflush", new AutoFlushHandler(writeFlushMillis, TimeUnit.MILLISECONDS));
-        }
-        pipeline.addLast("decoder", new MqttDecoder(maxBytesInMessage));
-        pipeline.addLast("encoder", MqttEncoder.INSTANCE);
+        pipeline.addLast("decoder", MarsMessageDecoder.INSTANCE);
+        pipeline.addLast("encoder", MarsMessageEncoder.INSTANCE);
         pipeline.addLast("metrics", new MessageMetricsHandler(metricsCollector));
-        pipeline.addLast("messageLogger", new MQTTMessageLogger());
+        pipeline.addLast("messageLogger", new MarsMessageLogger());
         if (metrics.isPresent()) {
             pipeline.addLast("wizardMetrics", metrics.get());
         }
         pipeline.addLast("handler", handler);
     }
 
-    private void initializeWebSocketTransport(final NewNettyMQTTHandler handler, IConfig props, BrokerConfiguration brokerConfiguration) {
-        LOG.debug("Configuring Websocket MQTT transport");
-        String webSocketPortProp = props.getProperty(WEB_SOCKET_PORT_PROPERTY_NAME, DISABLED_PORT_BIND);
-        if (DISABLED_PORT_BIND.equals(webSocketPortProp)) {
-            // Do nothing no WebSocket configured
-            LOG.info("Property {} has been setted to {}. Websocket MQTT will be disabled",
-                    BrokerConstants.WEB_SOCKET_PORT_PROPERTY_NAME, DISABLED_PORT_BIND);
-            return;
-        }
-        int port = Integer.parseInt(webSocketPortProp);
+//    private void configureMQTTPipeline(ChannelPipeline pipeline, MoquetteIdleTimeoutHandler timeoutHandler,
+//                                       NewNettyMQTTHandler handler, int writeFlushMillis) {
+//        pipeline.addFirst("idleStateHandler", new IdleStateHandler(nettyChannelTimeoutSeconds, 0, 0));
+//        pipeline.addAfter("idleStateHandler", "idleEventHandler", timeoutHandler);
+//        // pipeline.addLast("logger", new LoggingHandler("Netty", LogLevel.ERROR));
+//        if (errorsCather.isPresent()) {
+//            pipeline.addLast("bugsnagCatcher", errorsCather.get());
+//        }
+//        pipeline.addFirst("bytemetrics", new BytesMetricsHandler(bytesMetricsCollector));
+//        if (writeFlushMillis > IMMEDIATE_BUFFER_FLUSH) {
+//            pipeline.addLast("autoflush", new AutoFlushHandler(writeFlushMillis, TimeUnit.MILLISECONDS));
+//        }
+//        pipeline.addLast("decoder", new MqttDecoder(maxBytesInMessage));
+//        pipeline.addLast("encoder", MqttEncoder.INSTANCE);
+//        pipeline.addLast("metrics", new MessageMetricsHandler(metricsCollector));
+//        pipeline.addLast("messageLogger", new MarsMessageLogger());
+//        if (metrics.isPresent()) {
+//            pipeline.addLast("wizardMetrics", metrics.get());
+//        }
+//        pipeline.addLast("handler", handler);
+//    }
 
-        final MoquetteIdleTimeoutHandler timeoutHandler = new MoquetteIdleTimeoutHandler();
+//    private void initializeWebSocketTransport(final NewNettyMQTTHandler handler, IConfig props, BrokerConfiguration brokerConfiguration) {
+//        LOG.debug("Configuring Websocket MQTT transport");
+//        String webSocketPortProp = props.getProperty(WEB_SOCKET_PORT_PROPERTY_NAME, DISABLED_PORT_BIND);
+//        if (DISABLED_PORT_BIND.equals(webSocketPortProp)) {
+//            // Do nothing no WebSocket configured
+//            LOG.info("Property {} has been setted to {}. Websocket MQTT will be disabled",
+//                    BrokerConstants.WEB_SOCKET_PORT_PROPERTY_NAME, DISABLED_PORT_BIND);
+//            return;
+//        }
+//        int port = Integer.parseInt(webSocketPortProp);
+//
+//        final MoquetteIdleTimeoutHandler timeoutHandler = new MoquetteIdleTimeoutHandler();
+//
+//        String host = props.getProperty(BrokerConstants.HOST_PROPERTY_NAME);
+//        String path = props.getProperty(BrokerConstants.WEB_SOCKET_PATH_PROPERTY_NAME, BrokerConstants.WEBSOCKET_PATH);
+//        int maxFrameSize = props.intProp(BrokerConstants.WEB_SOCKET_MAX_FRAME_SIZE_PROPERTY_NAME, 65536);
+//        final int writeFlushMillis = brokerConfiguration.getBufferFlushMillis();
+//        initFactory(host, port, "Websocket MQTT", new PipelineInitializer() {
+//
+//            @Override
+//            void init(SocketChannel channel) {
+//                ChannelPipeline pipeline = channel.pipeline();
+//                pipeline.addLast(new HttpServerCodec());
+//                pipeline.addLast("aggregator", new HttpObjectAggregator(65536));
+//                pipeline.addLast("webSocketHandler",
+//                        new WebSocketServerProtocolHandler(path, MQTT_SUBPROTOCOL_CSV_LIST, false, maxFrameSize));
+//                pipeline.addLast("ws2bytebufDecoder", new WebSocketFrameToByteBufDecoder());
+//                pipeline.addLast("bytebuf2wsEncoder", new ByteBufToWebSocketFrameEncoder());
+//                configureMQTTPipeline(pipeline, timeoutHandler, handler, writeFlushMillis);
+//            }
+//        });
+//    }
 
-        String host = props.getProperty(BrokerConstants.HOST_PROPERTY_NAME);
-        String path = props.getProperty(BrokerConstants.WEB_SOCKET_PATH_PROPERTY_NAME, BrokerConstants.WEBSOCKET_PATH);
-        int maxFrameSize = props.intProp(BrokerConstants.WEB_SOCKET_MAX_FRAME_SIZE_PROPERTY_NAME, 65536);
-        final int writeFlushMillis = brokerConfiguration.getBufferFlushMillis();
-        initFactory(host, port, "Websocket MQTT", new PipelineInitializer() {
+//    private void initializeSSLTCPTransport(NewNettyMQTTHandler handler, IConfig props, SslContext sslContext, BrokerConfiguration brokerConfiguration) {
+//        LOG.debug("Configuring SSL MQTT transport");
+//        String sslPortProp = props.getProperty(SSL_PORT_PROPERTY_NAME, DISABLED_PORT_BIND);
+//        if (DISABLED_PORT_BIND.equals(sslPortProp)) {
+//            // Do nothing no SSL configured
+//            LOG.info("Property {} has been set to {}. SSL MQTT will be disabled",
+//                    BrokerConstants.SSL_PORT_PROPERTY_NAME, DISABLED_PORT_BIND);
+//            return;
+//        }
+//
+//        int sslPort = Integer.parseInt(sslPortProp);
+//        LOG.debug("Starting SSL on port {}", sslPort);
+//
+//        final MoquetteIdleTimeoutHandler timeoutHandler = new MoquetteIdleTimeoutHandler();
+//        String host = props.getProperty(BrokerConstants.HOST_PROPERTY_NAME);
+//        String sNeedsClientAuth = props.getProperty(BrokerConstants.NEED_CLIENT_AUTH, "false");
+//        final boolean needsClientAuth = Boolean.valueOf(sNeedsClientAuth);
+//        final int writeFlushMillis = brokerConfiguration.getBufferFlushMillis();
+//        initFactory(host, sslPort, SSL_MQTT_PROTO, new PipelineInitializer() {
+//
+//            @Override
+//            void init(SocketChannel channel) throws Exception {
+//                ChannelPipeline pipeline = channel.pipeline();
+//                pipeline.addLast("ssl", createSslHandler(channel, sslContext, needsClientAuth));
+//                configureMQTTPipeline(pipeline, timeoutHandler, handler, writeFlushMillis);
+//            }
+//        });
+//    }
 
-            @Override
-            void init(SocketChannel channel) {
-                ChannelPipeline pipeline = channel.pipeline();
-                pipeline.addLast(new HttpServerCodec());
-                pipeline.addLast("aggregator", new HttpObjectAggregator(65536));
-                pipeline.addLast("webSocketHandler",
-                        new WebSocketServerProtocolHandler(path, MQTT_SUBPROTOCOL_CSV_LIST, false, maxFrameSize));
-                pipeline.addLast("ws2bytebufDecoder", new WebSocketFrameToByteBufDecoder());
-                pipeline.addLast("bytebuf2wsEncoder", new ByteBufToWebSocketFrameEncoder());
-                configureMQTTPipeline(pipeline, timeoutHandler, handler, writeFlushMillis);
-            }
-        });
-    }
-
-    private void initializeSSLTCPTransport(NewNettyMQTTHandler handler, IConfig props, SslContext sslContext, BrokerConfiguration brokerConfiguration) {
-        LOG.debug("Configuring SSL MQTT transport");
-        String sslPortProp = props.getProperty(SSL_PORT_PROPERTY_NAME, DISABLED_PORT_BIND);
-        if (DISABLED_PORT_BIND.equals(sslPortProp)) {
-            // Do nothing no SSL configured
-            LOG.info("Property {} has been set to {}. SSL MQTT will be disabled",
-                    BrokerConstants.SSL_PORT_PROPERTY_NAME, DISABLED_PORT_BIND);
-            return;
-        }
-
-        int sslPort = Integer.parseInt(sslPortProp);
-        LOG.debug("Starting SSL on port {}", sslPort);
-
-        final MoquetteIdleTimeoutHandler timeoutHandler = new MoquetteIdleTimeoutHandler();
-        String host = props.getProperty(BrokerConstants.HOST_PROPERTY_NAME);
-        String sNeedsClientAuth = props.getProperty(BrokerConstants.NEED_CLIENT_AUTH, "false");
-        final boolean needsClientAuth = Boolean.valueOf(sNeedsClientAuth);
-        final int writeFlushMillis = brokerConfiguration.getBufferFlushMillis();
-        initFactory(host, sslPort, SSL_MQTT_PROTO, new PipelineInitializer() {
-
-            @Override
-            void init(SocketChannel channel) throws Exception {
-                ChannelPipeline pipeline = channel.pipeline();
-                pipeline.addLast("ssl", createSslHandler(channel, sslContext, needsClientAuth));
-                configureMQTTPipeline(pipeline, timeoutHandler, handler, writeFlushMillis);
-            }
-        });
-    }
-
-    private void initializeWSSTransport(NewNettyMQTTHandler handler, IConfig props, SslContext sslContext, BrokerConfiguration brokerConfiguration) {
-        LOG.debug("Configuring secure websocket MQTT transport");
-        String sslPortProp = props.getProperty(WSS_PORT_PROPERTY_NAME, DISABLED_PORT_BIND);
-        if (DISABLED_PORT_BIND.equals(sslPortProp)) {
-            // Do nothing no SSL configured
-            LOG.info("Property {} has been set to {}. Secure websocket MQTT will be disabled",
-                    BrokerConstants.WSS_PORT_PROPERTY_NAME, DISABLED_PORT_BIND);
-            return;
-        }
-        int sslPort = Integer.parseInt(sslPortProp);
-        final MoquetteIdleTimeoutHandler timeoutHandler = new MoquetteIdleTimeoutHandler();
-        String host = props.getProperty(BrokerConstants.HOST_PROPERTY_NAME);
-        String path = props.getProperty(BrokerConstants.WEB_SOCKET_PATH_PROPERTY_NAME, BrokerConstants.WEBSOCKET_PATH);
-        int maxFrameSize = props.intProp(BrokerConstants.WEB_SOCKET_MAX_FRAME_SIZE_PROPERTY_NAME, 65536);
-        String sNeedsClientAuth = props.getProperty(BrokerConstants.NEED_CLIENT_AUTH, "false");
-        final boolean needsClientAuth = Boolean.valueOf(sNeedsClientAuth);
-        final int writeFlushMillis = brokerConfiguration.getBufferFlushMillis();
-        initFactory(host, sslPort, "Secure websocket", new PipelineInitializer() {
-
-            @Override
-            void init(SocketChannel channel) throws Exception {
-                ChannelPipeline pipeline = channel.pipeline();
-                pipeline.addLast("ssl", createSslHandler(channel, sslContext, needsClientAuth));
-                pipeline.addLast("httpEncoder", new HttpResponseEncoder());
-                pipeline.addLast("httpDecoder", new HttpRequestDecoder());
-                pipeline.addLast("aggregator", new HttpObjectAggregator(65536));
-                pipeline.addLast("webSocketHandler",
-                        new WebSocketServerProtocolHandler(path, MQTT_SUBPROTOCOL_CSV_LIST, false, maxFrameSize));
-                pipeline.addLast("ws2bytebufDecoder", new WebSocketFrameToByteBufDecoder());
-                pipeline.addLast("bytebuf2wsEncoder", new ByteBufToWebSocketFrameEncoder());
-
-                configureMQTTPipeline(pipeline, timeoutHandler, handler, writeFlushMillis);
-            }
-        });
-    }
+//    private void initializeWSSTransport(NewNettyMQTTHandler handler, IConfig props, SslContext sslContext, BrokerConfiguration brokerConfiguration) {
+//        LOG.debug("Configuring secure websocket MQTT transport");
+//        String sslPortProp = props.getProperty(WSS_PORT_PROPERTY_NAME, DISABLED_PORT_BIND);
+//        if (DISABLED_PORT_BIND.equals(sslPortProp)) {
+//            // Do nothing no SSL configured
+//            LOG.info("Property {} has been set to {}. Secure websocket MQTT will be disabled",
+//                    BrokerConstants.WSS_PORT_PROPERTY_NAME, DISABLED_PORT_BIND);
+//            return;
+//        }
+//        int sslPort = Integer.parseInt(sslPortProp);
+//        final MoquetteIdleTimeoutHandler timeoutHandler = new MoquetteIdleTimeoutHandler();
+//        String host = props.getProperty(BrokerConstants.HOST_PROPERTY_NAME);
+//        String path = props.getProperty(BrokerConstants.WEB_SOCKET_PATH_PROPERTY_NAME, BrokerConstants.WEBSOCKET_PATH);
+//        int maxFrameSize = props.intProp(BrokerConstants.WEB_SOCKET_MAX_FRAME_SIZE_PROPERTY_NAME, 65536);
+//        String sNeedsClientAuth = props.getProperty(BrokerConstants.NEED_CLIENT_AUTH, "false");
+//        final boolean needsClientAuth = Boolean.valueOf(sNeedsClientAuth);
+//        final int writeFlushMillis = brokerConfiguration.getBufferFlushMillis();
+//        initFactory(host, sslPort, "Secure websocket", new PipelineInitializer() {
+//
+//            @Override
+//            void init(SocketChannel channel) throws Exception {
+//                ChannelPipeline pipeline = channel.pipeline();
+//                pipeline.addLast("ssl", createSslHandler(channel, sslContext, needsClientAuth));
+//                pipeline.addLast("httpEncoder", new HttpResponseEncoder());
+//                pipeline.addLast("httpDecoder", new HttpRequestDecoder());
+//                pipeline.addLast("aggregator", new HttpObjectAggregator(65536));
+//                pipeline.addLast("webSocketHandler",
+//                        new WebSocketServerProtocolHandler(path, MQTT_SUBPROTOCOL_CSV_LIST, false, maxFrameSize));
+//                pipeline.addLast("ws2bytebufDecoder", new WebSocketFrameToByteBufDecoder());
+//                pipeline.addLast("bytebuf2wsEncoder", new ByteBufToWebSocketFrameEncoder());
+//
+//                configureMQTTPipeline(pipeline, timeoutHandler, handler, writeFlushMillis);
+//            }
+//        });
+//    }
 
     @SuppressWarnings("FutureReturnValueIgnored")
     public void close() {

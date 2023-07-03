@@ -4,6 +4,7 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.util.Attribute;
 import io.netty.util.AttributeKey;
+import net.fengyu.protocol.tcp.Message;
 
 import java.io.IOException;
 
@@ -56,24 +57,18 @@ public final class NettyUtils {
         return (String) channel.attr(NettyUtils.ATTR_KEY_USERNAME).get();
     }
 
-//    /**
-//     * Validate that the provided message is an MqttMessage and that it does not contain a failed result.
-//     *
-//     * @param message to be validated
-//     * @return the casted provided message
-//     * @throws IOException in case of an fail message this will wrap the root cause
-//     * @throws ClassCastException if the provided message is no MqttMessage
-//     */
-//    public static MqttMessage validateMessage(Object message) throws IOException, ClassCastException {
-//        MqttMessage msg = (MqttMessage) message;
+    public static Message validateMessage(Object message) throws IOException, ClassCastException {
+        Message msg = (Message) message;
+
+        // TODO 做消息校验
 //        if (msg.decoderResult() != null && msg.decoderResult().isFailure()) {
 //            throw new IOException("invalid massage", msg.decoderResult().cause());
 //        }
 //        if (msg.fixedHeader() == null) {
 //            throw new IOException("Unknown packet, no fixedHeader present, no cause provided");
 //        }
-//        return msg;
-//    }
+        return msg;
+    }
 
     private NettyUtils() {
     }
