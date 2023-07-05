@@ -14,8 +14,8 @@ public class Message implements Serializable {
      */
     private byte[] payLoad;
 
-    public static Message create(MsgHeader header, byte[] body) {
-        return new Message(header, body);
+    public static Message create(MsgHeader header, byte[] payLoad) {
+        return new Message(header, payLoad);
     }
 
     private Message() {

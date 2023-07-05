@@ -1,0 +1,4 @@
+
+
+在项目根目录执行如下命令
+protoc-23.3-osx-x86_64/bin/protoc --proto_path=protocol/src/main/resources/proto --java_out=protocol/src/main/java/ protocol/src/main/resources/proto/messagecmd.proto

@@ -1,9 +1,22 @@
+/*
+ * Copyright (c) 2012-2018 The original author or authors
+ * ------------------------------------------------------
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * and Apache License v2.0 which accompanies this distribution.
+ *
+ * The Eclipse Public License is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ *
+ * The Apache License v2.0 is available at
+ * http://www.opensource.org/licenses/apache2.0.php
+ *
+ * You may elect to redistribute this code under either of these licenses.
+ */
+
 package net.fengyu.broker.config;
 
-/**
- * @author fengyu
- * @date 2023/6/30 16:36
- */
+
 
 import net.fengyu.broker.BrokerConstants;
 
@@ -16,7 +29,7 @@ import java.time.temporal.TemporalUnit;
  */
 public abstract class IConfig {
 
-    public static final String DEFAULT_CONFIG = "config/moquette.conf";
+    public static final String DEFAULT_CONFIG = "config/dream.conf";
 
     public abstract void setProperty(String name, String value);
 
@@ -49,13 +62,13 @@ public abstract class IConfig {
         setProperty(BrokerConstants.AUTHENTICATOR_CLASS_NAME, "");
         setProperty(BrokerConstants.AUTHORIZATOR_CLASS_NAME, "");
         setProperty(BrokerConstants.NETTY_MAX_BYTES_PROPERTY_NAME,
-                String.valueOf(BrokerConstants.DEFAULT_NETTY_MAX_BYTES_IN_MESSAGE));
+            String.valueOf(BrokerConstants.DEFAULT_NETTY_MAX_BYTES_IN_MESSAGE));
         setProperty(BrokerConstants.PERSISTENT_QUEUE_TYPE_PROPERTY_NAME, "segmented");
         setProperty(BrokerConstants.DATA_PATH_PROPERTY_NAME, "data/");
         setProperty(BrokerConstants.PERSISTENCE_ENABLED_PROPERTY_NAME, Boolean.TRUE.toString());
     }
 
-    //public abstract IResourceLoader getResourceLoader();
+    public abstract IResourceLoader getResourceLoader();
 
     public int intProp(String propertyName, int defaultValue) {
         String propertyValue = getProperty(propertyName);

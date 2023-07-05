@@ -18,7 +18,9 @@ public class MarsMessageDecoder extends MessageToMessageDecoder<ByteBuf> {
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf byteBuf, List<Object> out) throws Exception {
         try {
-            Message message = Message.streamToMessage(byteBuf.array());
+            byte[] inByte = new byte[byteBuf.readableBytes()];
+            byteBuf.readBytes(inByte);
+            Message message = Message.streamToMessage(inByte);
             out.add(message);
         } catch (Exception e) {
             throw e;

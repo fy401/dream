@@ -1,0 +1,11 @@
+syntax = "proto3";
+package protocol.protobuf;
+
+option java_package = "net.fengyu.protocol.protobuf";
+option java_outer_classname = "MessageCmd";
+/*
+ * 业务类型
+ */
+enum BzType {
+  INVOICING = 0;  //开发票
+}

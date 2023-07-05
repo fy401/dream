@@ -1,0 +1,15 @@
+syntax = "proto3";
+package protocol.protobuf;
+
+option java_package = "net.fengyu.protocol.protobuf";
+option java_outer_classname = "MessageCmd";
+
+enum CmdID {
+  CMD_ID_DEFAULT = 0;//未使用的命令号，proto3要求枚举第一个元素从0开始，用于默认的消息处理Handler
+  CMD_ID_CONNECT = 1;//连接，完成秘钥交换等
+  CMD_ID_AUTH = 3;//登录
+  CMD_ID_LOGOUT = 4;//登出
+  CMD_ID_KICKOUT = 5;//踢人
+  CMD_ID_KEEPALIVE = 6;//心跳
+
+}
