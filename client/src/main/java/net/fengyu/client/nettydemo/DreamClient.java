@@ -9,9 +9,11 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
+import net.fengyu.client.codec.MarsMessageDecoder;
+import net.fengyu.client.codec.MarsMessageEncoder;
 import net.fengyu.protocol.protobuf.MessageCmd;
 import net.fengyu.protocol.tcp.Message;
-import net.fengyu.protocol.tcp.MessageHelper;
 import net.fengyu.protocol.tcp.MsgHeader;
 
 import java.io.UnsupportedEncodingException;
@@ -50,7 +52,10 @@ public class DreamClient {
 //                  socketChannel.pipeline().addLast(MarshallingCodefactory.buildDecoder());
                         // marshalling 序列化对象的编码
 //                  socketChannel.pipeline().addLast(MarshallingCodefactory.buildEncoder());
+                        socketChannel.pipeline().addLast("framer", new LengthFieldBasedFrameDecoder(8192,16,4,0,0));
 
+                        socketChannel.pipeline().addLast("decoder", MarsMessageDecoder.INSTANCE);
+                        socketChannel.pipeline().addLast("encoder", MarsMessageEncoder.INSTANCE);
                         // 处理来自服务端的响应信息
                         socketChannel.pipeline().addLast(new ClientHandler());
                     }
@@ -60,15 +65,16 @@ public class DreamClient {
         ChannelFuture cf = bs.connect(ip, port).sync();
 
         String reqStr = "我是客户端请求1$_";
-        MsgHeader msgHeader = MessageHelper.generateMsgHeader(123, MessageCmd.CmdID.CMD_ID_AUTH);
-        Message message = MessageHelper.generateMessage(msgHeader,reqStr.getBytes(Charset.defaultCharset()));
+        MsgHeader msgHeader = MsgHeader.generateMsgHeader(123, MessageCmd.CmdID.CMD_ID_AUTH);
+        Message message = Message.generateMessage(msgHeader,reqStr.getBytes(Charset.defaultCharset()));
 
 
 
 
 
         // 发送客户端的请求
-        cf.channel().writeAndFlush(Unpooled.copiedBuffer(message.toByteArray()));
+        cf.channel().writeAndFlush(message);
+//        cf.channel().writeAndFlush(Unpooled.copiedBuffer(message.toByteArray()));
 //      Thread.sleep(300);
 //      cf.channel().writeAndFlush(Unpooled.copiedBuffer("我是客户端请求2$_---".getBytes(Constant.charset)));
 //      Thread.sleep(300);

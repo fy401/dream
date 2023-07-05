@@ -36,6 +36,6 @@ public class ServerTest {
                 Integer.parseInt(String.valueOf(plainProps.getProperty(BrokerConstants.PORT_PROPERTY_NAME)))).action();
 
 
-        Thread.sleep(2000L);
+        Thread.sleep(20000L);
     }
 }

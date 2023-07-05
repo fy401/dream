@@ -1,4 +1,4 @@
-package net.fengyu.broker.codec;
+package net.fengyu.client.codec;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandler;

@@ -4,6 +4,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.util.ReferenceCountUtil;
+import net.fengyu.protocol.tcp.Message;
 
 import java.nio.charset.Charset;
 
@@ -14,13 +15,14 @@ import java.nio.charset.Charset;
 public class ClientHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-
+        System.err.println("客户端读取数据");
+        Message m = (Message) msg;
         try {
-            ByteBuf bb = (ByteBuf)msg;
-            byte[] respByte = new byte[bb.readableBytes()];
-            bb.readBytes(respByte);
-            String respStr = new String(respByte, Charset.defaultCharset());
-            System.err.println("client--收到响应：" + respStr);
+//            ByteBuf bb = (ByteBuf)msg;
+//            byte[] respByte = new byte[bb.readableBytes()];
+//            bb.readBytes(respByte);
+//            String respStr = new String(respByte, Charset.defaultCharset());
+            System.err.println("client--收到响应：" + new String(m.getPayLoad(),Charset.defaultCharset()));
 
             // 直接转成对象
 //          handlerObject(ctx, msg);

@@ -5,6 +5,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.util.AttributeKey;
 import net.fengyu.protocol.tcp.Message;
+import net.fengyu.protocol.tcp.MsgHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,5 +32,9 @@ public class NettyDreamHandler extends ChannelInboundHandlerAdapter {
     public void channelRead(ChannelHandlerContext ctx, Object message) throws Exception {
         Message m = (Message) message;
         System.out.println("服务端收到消息：" + new String(m.getPayLoad(), Charset.defaultCharset()));
+
+        MsgHeader msgHeader = MsgHeader.copy(m.getHeader());
+        Message res = Message.generateMessage(msgHeader,"服务端发出的消息".getBytes(Charset.defaultCharset()));
+        ctx.channel().writeAndFlush(res);
     }
 }

@@ -1,5 +1,7 @@
 package net.fengyu.protocol.tcp;
 
+import net.fengyu.protocol.protobuf.MessageCmd;
+
 import java.io.Serializable;
 
 
@@ -28,7 +30,7 @@ public class MsgHeader implements Serializable {
         return new MsgHeader();
     }
 
-    public static MsgHeader newMsgHeader(MsgHeader header) {
+    public static MsgHeader copy(MsgHeader header) {
         MsgHeader _header = new MsgHeader();
         _header.setHeadLength(header.getHeadLength());
         _header.setClientVersion(header.getClientVersion());
@@ -36,6 +38,21 @@ public class MsgHeader implements Serializable {
         _header.setSeq(header.getSeq());
         _header.setBodyLength(header.getBodyLength());
         return _header;
+    }
+
+    public static MsgHeader generateMsgHeader(int seq, MessageCmd.CmdID cmdID) {
+        return generateMsgHeader(0, seq, cmdID);
+    }
+
+    public static MsgHeader generateMsgHeader(int payLoadLength, int seq, MessageCmd.CmdID cmdID) {
+        int clientVersion = 1;
+        MsgHeader msgHeader = MsgHeader.newMsgHeader();
+        msgHeader.setHeadLength(MsgHeader.HEADER_LENGTH);
+        msgHeader.setClientVersion(clientVersion);
+        msgHeader.setCmdId(cmdID.getNumber());
+        msgHeader.setSeq(seq);
+        msgHeader.setBodyLength(payLoadLength);
+        return msgHeader;
     }
 
     /**
